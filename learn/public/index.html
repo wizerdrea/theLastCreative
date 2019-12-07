@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+
+<head>
+  <title>Socket.IO chat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div id="app">
+    <ul id="messages">
+      <li v-for="msg in messages">{{msg}}</li>
+    </ul>
+    <form v-on:submit.prevent="test()">
+      <input id="m" autocomplete="off" v-model="text" /><button>Send</button>
+    </form>
+  </div>
+  
+  
+  
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.2/dist/vue.js"></script>
+  <script src="scripts.js"></script>
+    
+  </script>
+</body>
+
+</html>
