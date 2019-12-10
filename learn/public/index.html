@@ -1,28 +1,112 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
-  <title>Socket.IO chat</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css?family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+  <title>Battle 2.0</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
-  <div id="app">
-    <ul id="messages">
-      <li v-for="msg in messages">{{msg}}</li>
-    </ul>
-    <form v-on:submit.prevent="test()">
-      <input id="m" autocomplete="off" v-model="text" /><button>Send</button>
-    </form>
+  <div id="app" class="container">
+    <div v-if="error">
+      <p>there has been an error</p>
+    </div>
+    <div v-if="inGame">
+      <h2>You are {{ character.name }}</h2>
+      <div class="container">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-6 playerInfo">
+            <h2>{{ game.player1.name }}</h2>
+            <p>hp: {{ game.player1.hp }}</p>
+            <p>mp: {{ game.player1.mp }}</p>
+          </div>
+          <div class="col-12 col-md-6 playerInfo">
+            <div v-if="!game.started">
+              <h2>Waiting for oppenent</h2>
+            </div>
+            <div v-else>
+              <h2>{{ game.player2.name }}</h2>
+              <p>hp: {{ game.player2.hp }}</p>
+              <p>mp: {{ game.player2.mp }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div v-if="game.gameOver">
+          <p class="state">Game over!</p>
+          <p v-if="game.winner === 'none'" class="state">The game is a tie</p>
+          <p v-else-if="game.winner === socket.id" class="state">You Won!</p>
+          <p v-else class="state">You Lost.</p>
+        </div>
+        <div v-else>
+          <p v-if="!game.started" class="state">Wating for opponent</p>
+          <p v-else-if="yourTurn" class="state">It is your turn</p>
+          <p v-else class="state">Waiting for oppenent to move</p>
+        </div>
+        <div class="container">
+          <div class="row justify-content-center">
+            <div v-for="move in character.attacks" class="col-12 col-md-4 moveBox">
+              <table class="moveTable">
+                <tr>
+                  <td class="leftCol">Title: {{ move.title }}</td>
+                  <td class="rightCol">Level: {{ move.level }}</td>
+                  <td rowspan="5"><button v-on:click="makeAttack(move.index)">Use</button></td>
+                </tr>
+                <tr>
+                  <td class="leftCol">mp cost: {{ move.mpCost }}</td>
+                  <td class="rightCol">hp cost: {{ move.hpCost }}</td>
+                </tr>
+                <tr>
+                  <td class="leftCol">cooldown: {{ move.cooldown }}</td>
+                  <td class="rightCol">Ready in: {{ move.turnsUntilReady }} turns</td>
+                </tr>
+                <tr>
+                  <td class="leftCol">
+                    Strength: {{ move.strength }}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="leftCol" colspan="2">
+                    Description: {{ move.description }}
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </div>
+        </div>
+        <button v-on:click="quitGame()">Quit Game</button>
+      </div>
+      <div id="gameLog">
+        <p id="logHeader">Game log</p>
+        <ul>
+          <li v-for="item in game.log">{{ item }}</li>
+        </ul>
+      </div>
+      <p>Game id: {{ game._id }}</p>
+    </div>
+    <div v-else>
+      <div class="header">
+        <h1>Battle Your Friends!!</h1>
+        <p id="needFriendInstruction">(Note: you must play against someone on another browser)</p>
+      </div>
+      <button v-on:click="newGame()">Start Game</button>
+    </div>
   </div>
-  
-  
-  
+
+  <div class="footer">
+    <p id="footer">GitHub: <a href="https://github.com/wizerdrea/theLastCreative">https://github.com/wizerdrea/theLastCreative</a></p>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.2/dist/vue.js"></script>
   <script src="scripts.js"></script>
-    
+
   </script>
 </body>
 

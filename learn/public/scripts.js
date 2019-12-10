@@ -4,25 +4,56 @@ var app = new Vue({
     el: '#app',
     data: {
         socket: {},
-        messages: [],
-        text: '',
+        inGame: false,
+        game: {},
+        error: false,
+        character: {},
+        youtTurn: false,
     },
     created() {
         this.socket = io();
     },
     methods: {
-        test() {
-
-                this.socket.emit('chat message', this.text);
-                this.messages.push(this.text);
-                this.text = '';
-        },
         received(msg) {
-                this.messages.push(msg);
                 console.log(msg);
+        },
+        newGame() {
+            this.socket.emit('newGame');
+        },
+        gameUpdate(updatedGame) {
+            this.game = updatedGame;
+            this.inGame = true;
+            if (this.socket.id == this.game.player1.playerID)
+            {
+                this.character = this.game.player1;
+            }
+            else if (this.socket.id == this.game.player2.playerID)
+            {
+                this.character = this.game.player2;
+            }
+            if (this.game.currentPlayer == this.socket.id)
+            {
+                this.yourTurn = true;
+            }
+            else {
+                this.yourTurn = false;
+            }
+        },
+        quit(){
+            this.inGame = false;
+            this.game = {};
+            this.character = {};
+        },
+        quitGame() {
+            this.socket.emit('quit');
+        },
+        makeAttack(index) {
+            this.socket.emit('attack', index);
         },
     },
     mounted() {
         this.socket.on('chat message', this.received);
+        this.socket.on('update game', this.gameUpdate);
+        this.socket.on('quit', this.quit);
     },
 });
