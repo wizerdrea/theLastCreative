@@ -138,61 +138,65 @@ io.on('connection', function(socket) {
     socket.broadcast.emit('chat message', msg);
   });
   socket.on('newGame', async function() {
-    //generate character
-    let newChraracter = await generateCharacter(socket.id);
-    let gameID = 0;
-    let newGame = {};
-    //check if there is a ready game
-    if (await game.countDocuments({ started: false })) {
-      newGame = await game.findOne({ started: false });
-      newGame.player2 = newChraracter;
-      newGame.started = true;
-      newGame.save();
-      gameID = newGame._id;
-    }
-    else {
-      newGame = new game({ 
-        player1: newChraracter, 
-        log: [],
-        currentPlayer: socket.id
-      });
-      newGame.save();
-      gameID = newGame._id;
-    }
-    
-    socket.join(gameID);
-    io.to(gameID).emit('chat message', 'in room ' + gameID);
     try {
+      //generate character
+      let newChraracter = await generateCharacter(socket.id);
+      let gameID = 0;
+      let newGame = {};
+      //check if there is a ready game
+      if (await game.countDocuments({ started: false })) {
+        newGame = await game.findOne({ started: false });
+        newGame.player2 = newChraracter;
+        newGame.started = true;
+        newGame.save();
+        gameID = newGame._id;
+      }
+      else {
+        newGame = new game({
+          player1: newChraracter,
+          log: [],
+          currentPlayer: socket.id
+        });
+        newGame.save();
+        gameID = newGame._id;
+      }
+      socket.join(gameID);
+      io.to(gameID).emit('chat message', 'in room ' + gameID);
       let userUpdate = await user.findOne({ socketID: socket.id });
       userUpdate.game = gameID;
       userUpdate.save();
       io.to(gameID).emit('update game', newGame);
-    }
-    catch (error) {
-      console.log("bummer");
+    } catch (error) {
+      console.log("bummer error making or joinging game (or making character)");
+      console.log(error);
     }
   });
   socket.on('attack', async function(index) {
     try {
-    await performMove(socket.id, index);
+      await performMove(socket.id, index);
     }
-    catch (error)
-    {
+    catch (error) {
       console.log("huh...");
       console.log(error);
     }
   });
   socket.on('quit', async function() {
-    let userUpdate = await user.findOne({ socketID: socket.id });
-    let gameID = userUpdate.game;
-    let updatedGame = await game.findOne({ _id: gameID });
-    let player1 = await user.findOne({ socketID: updatedGame.player1.playerID });
-    player1.game = "none";
-    let player2 = await user.findOne({ socketID: updatedGame.player2.playerID });
-    player2.game = "none";
-    io.to(gameID).emit('quit');
-    io.sockets.clients(gameID).forEach(function(s){ s.leave(gameID); });
-    await game.deleteOne({ _id: gameID });
+    try {
+      let userUpdate = await user.findOne({ socketID: socket.id });
+      let gameID = userUpdate.game;
+      let updatedGame = await game.findOne({ _id: gameID });
+      let player1 = await user.findOne({ socketID: updatedGame.player1.playerID });
+      player1.game = "none";
+      let player2 = await user.findOne({ socketID: updatedGame.player2.playerID });
+      player2.game = "none";
+      io.to(gameID).emit('quit');
+      //io.sockets.clients(gameID).forEach(function(s) { s.leave(gameID); });
+      await game.deleteOne({ _id: gameID });
+    }
+    catch (error) {
+      console.log("error while quitting");
+      console.log(error);
+    }
   });
 });
 /****** end of actions ******/
@@ -207,124 +211,121 @@ http.listen(8082, function() {
 /****** perform attacks and check if game is over ******/
 const performMove = async(playerID, moveIndex) => {
   try {
-  //find game 
-  const player = await user.findOne({ socketID: playerID });
-  const updatedGame = await game.findOne({ _id: player.game });
-  let character;
-  let opponent;
-  if (playerID == updatedGame.player1.playerID) {
-    character = updatedGame.player1;
-    opponent = updatedGame.player2;
-  }
-  else {
-    character = updatedGame.player2;
-    opponent = updatedGame.player1;
-  }
-  let attack = character.attacks[moveIndex];
+    //find game 
+    const player = await user.findOne({ socketID: playerID });
+    const updatedGame = await game.findOne({ _id: player.game });
+    let character;
+    let opponent;
+    if (playerID == updatedGame.player1.playerID) {
+      character = updatedGame.player1;
+      opponent = updatedGame.player2;
+    }
+    else {
+      character = updatedGame.player2;
+      opponent = updatedGame.player1;
+    }
+    let attack = character.attacks[moveIndex];
 
-  let hpCost = attack.hpCost;
-  let mpCost = attack.mpCost;
-  let strength = attack.strength + Math.floor((Math.random() * 7)) - 3;
-  let title = attack.title;
+    let hpCost = attack.hpCost;
+    let mpCost = attack.mpCost;
+    let strength = attack.strength + Math.floor((Math.random() * 7)) - 3;
+    let title = attack.title;
 
-  //check if attack is valid
-  if (attack.turnsUntilReady || (character.hp < hpCost) || 
+    //check if attack is valid
+    if (attack.turnsUntilReady || (character.hp < hpCost) ||
       (character.mp < mpCost || (playerID != updatedGame.currentPlayer))) {
-    return false;
-  }
-
-  //update log
-  if (hpCost && mpCost) {
-    updatedGame.log.unshift(character.name + " has paid " + mpCost + " mp and " + hpCost + " hp to perform " + title);
-  }
-  else if (mpCost) {
-    updatedGame.log.unshift(character.name + " has paid " + mpCost + " mp to perform " + title);
-  }
-  else if (hpCost) {
-    updatedGame.log.unshift(character.name + " has paid " + hpCost + " hp to perform " + title);
-  }
-  else {
-    updatedGame.log.unshift(character.name + " performs " + title);
-  }
-
-  //spend hp and mp
-  character.hp -= hpCost;
-  character.mp -= mpCost;
-
-  //check if targets opponent
-  if (attack.targetOpponent) {
-    //check if damages opponent
-    if (attack.damageOpponent) {
-      opponent.hp -= strength;
-      updatedGame.log.unshift(opponent.name + " takes " + strength + " damage");
-      if (opponent.hp < 0) {
-        opponent.hp = 0;
-      }
+      return false;
     }
-    //else heal opponent
+
+    //update log
+    if (hpCost && mpCost) {
+      updatedGame.log.unshift(character.name + " has paid " + mpCost + " mp and " + hpCost + " hp to perform " + title);
+    }
+    else if (mpCost) {
+      updatedGame.log.unshift(character.name + " has paid " + mpCost + " mp to perform " + title);
+    }
+    else if (hpCost) {
+      updatedGame.log.unshift(character.name + " has paid " + hpCost + " hp to perform " + title);
+    }
     else {
-      updatedGame.players[opponent].hp += strength;
-      updatedGame.log.unshift(opponent.name + " gains " + strength + " hp");
-      if (opponent.hp > opponent.maxHP) {
-        opponent.hp = opponent.maxHP;
-      }
+      updatedGame.log.unshift(character.name + " performs " + title);
     }
-  }
 
-  //check if move tagets self
-  if (attack.targetSelf) {
-    //check if damages self
-    if (attack.damageSelf) {
-      character.hp -= strength;
-      updatedGame.log.unshift(character.name + " takes " + strength + " damage");
-      if (character.hp < 0) {
-        character.hp = 0;
+    //spend hp and mp
+    character.hp -= hpCost;
+    character.mp -= mpCost;
+
+    //check if targets opponent
+    if (attack.targetOpponent) {
+      //check if damages opponent
+      if (attack.damageOpponent) {
+        opponent.hp -= strength;
+        updatedGame.log.unshift(opponent.name + " takes " + strength + " damage");
+        if (opponent.hp < 0) {
+          opponent.hp = 0;
+        }
+      }
+      //else heal opponent
+      else {
+        updatedGame.players[opponent].hp += strength;
+        updatedGame.log.unshift(opponent.name + " gains " + strength + " hp");
+        if (opponent.hp > opponent.maxHP) {
+          opponent.hp = opponent.maxHP;
+        }
       }
     }
-    //else heal self
+
+    //check if move tagets self
+    if (attack.targetSelf) {
+      //check if damages self
+      if (attack.damageSelf) {
+        character.hp -= strength;
+        updatedGame.log.unshift(character.name + " takes " + strength + " damage");
+        if (character.hp < 0) {
+          character.hp = 0;
+        }
+      }
+      //else heal self
+      else {
+        character.hp += strength;
+        updatedGame.log.unshift(character.name + " gains " + strength + " hp");
+        if (character.hp > character.maxHP) {
+          character.hp = character.maxHP;
+        }
+      }
+    }
+
+    //update move cooldowns
+    attack.turnsUntilReady = attack.cooldown;
+    for (let i = 0; i < character.attacks.length; ++i) {
+      if ((i != moveIndex) && (character.attacks[i].turnsUntilReady)) {
+        character.attacks[i].turnsUntilReady--;
+      }
+    }
+
+    //save information back into game db
+    character.attacks[moveIndex] = JSON.parse(JSON.stringify(attack));
+    if (playerID == updatedGame.player1.playerID) {
+      updatedGame.player1 = JSON.parse(JSON.stringify(character));
+      updatedGame.player2 = JSON.parse(JSON.stringify(opponent));
+      updatedGame.currentPlayer = updatedGame.player2.playerID;
+    }
     else {
-      character.hp += strength;
-      updatedGame.log.unshift(character.name + " gains " + strength + " hp");
-      if (character.hp > character.maxHP) {
-        character.hp = character.maxHP;
-      }
+      updatedGame.player2 = JSON.parse(JSON.stringify(character));
+      updatedGame.player1 = JSON.parse(JSON.stringify(opponent));
+      updatedGame.currentPlayer = updatedGame.player1.playerID;
     }
-  }
 
-  //update move cooldowns
-  attack.turnsUntilReady = attack.cooldown;
-  for (let i = 0; i < character.attacks.length; ++i) {
-    if ((i != moveIndex) && (character.attacks[i].turnsUntilReady)) {
-      character.attacks[i].turnsUntilReady--;
-    }
-  }
+    await game.replaceOne({ _id: updatedGame._id }, updatedGame);
 
-  //save information back into game db
-  character.attacks[moveIndex] = JSON.parse(JSON.stringify(attack));
-  if (playerID == updatedGame.player1.playerID) {
-    updatedGame.player1 = JSON.parse(JSON.stringify(character));
-    updatedGame.player2 = JSON.parse(JSON.stringify(opponent));
-    updatedGame.currentPlayer = updatedGame.player2.playerID;
-  }
-  else {
-    updatedGame.player2 = JSON.parse(JSON.stringify(character));
-    updatedGame.player1 = JSON.parse(JSON.stringify(opponent));
-    updatedGame.currentPlayer = updatedGame.player1.playerID;
-  }
-  
-  await game.replaceOne({ _id: updatedGame._id }, updatedGame);
-  //await updatedGame.save();
-  
-  //console.log(updatedGame);
 
-  //check if game is over
-  await checkGameOver(updatedGame);
-  
-  io.to(updatedGame._id).emit('update game', updatedGame);
-  return true;
+    //check if game is over
+    await checkGameOver(updatedGame);
+
+    io.to(updatedGame._id).emit('update game', updatedGame);
+    return true;
   }
-  catch (error)
-  {
+  catch (error) {
     console.log("making attack error");
     console.log(error);
     return false;
@@ -332,7 +333,7 @@ const performMove = async(playerID, moveIndex) => {
 };
 
 //checks if game is over and updates game
-const checkGameOver = async (game) => {
+const checkGameOver = async(game) => {
   if ((game.player1.hp <= 0) &&
     (game.player2.hp <= 0)) {
     game.gameOver = true;
@@ -407,16 +408,16 @@ const generateMove = async(index, level) => {
     //don't forget to set spectial name
     //newAttack.title = generateSpecialAttackTitle();
     //set special level
-    newAttack.level = level + Math.floor((Math.random() * 2));
+    newAttack.level = level + Math.floor(Math.random() * 2);
     //set costs
-    newAttack.mpCost += Math.floor((Math.random() * newAttack.level * 10));
-    newAttack.hpCost += Math.floor((Math.random() * newAttack.level * 5));
+    newAttack.mpCost += Math.floor(Math.random() * newAttack.level * 13);
+    newAttack.hpCost += Math.floor(Math.random() * newAttack.level * 7);
     //add random adjust to cooldown time
-    newAttack.cooldown += newAttack.Level + Math.floor((Math.random() * newAttack.Level * 2));
+    newAttack.cooldown += newAttack.Level + Math.floor(Math.random() * newAttack.level * 2);
     //set starting turns until ready
     newAttack.turnsUntilReady = newAttack.cooldown;
     //add random adjust to strength
-    newAttack.strength += Math.floor((Math.random() * newAttack.Level * 10)) + 15;
+    newAttack.strength += Math.floor((Math.random() * newAttack.level * 10)) + 5 * newAttack.level;
   }
 
   return newAttack;
